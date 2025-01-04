@@ -1,85 +1,99 @@
 using UnityEngine;
 
-// This script handles the player's movement, jumping, flipping, and animations.
 public class PlayerController : MonoBehaviour
 {
-    // Movement and control variables
-    private float _horizontal; // Stores horizontal input
-    private float _speed = 8f; // Speed of the player's movement
-    private float _jumpPower = 16f; // Force applied when the player jumps
-    private bool _isFacingRight = true; // Tracks whether the player is facing right
+    // Yatay hareket için giriş değeri
+    private float _horizontal;
+    // Oyuncunun hareket hızı
+    private float _speed = 8f;
+    // Zıplama gücü
+    private float _jumpPower = 16f;
+    // Oyuncunun hangi yöne baktığını kontrol eder (sağa mı sola mı)
+    private bool _isFacingRight = true;
 
-    // Serialized fields to link components and settings in the Inspector
-    [SerializeField] private Rigidbody2D _rigidbody; // Player's Rigidbody2D for physics
-    [SerializeField] private Transform _groundCheck; // Position to check if the player is on the ground
-    [SerializeField] private LayerMask _groundLayer; // Layer that defines what is considered ground
+    // Oyuncunun fiziksel hareketini kontrol etmek için Rigidbody2D referansı
+    [SerializeField] private Rigidbody2D _rigidbody;
+    // Oyuncunun yere değip değmediğini kontrol etmek için kullanılan nokta
+    [SerializeField] private Transform _groundCheck;
+    // Yere temas kontrolü için kullanılan katman
+    [SerializeField] private LayerMask _groundLayer;
 
     [Space(10)]
-    [SerializeField] private float _fireRate; // Cooldown time between attacks
+    // Ateş etme sıklığını belirler
+    [SerializeField] private float _fireRate;
 
-    private float _nextFire; // Tracks when the player can attack again
+    // Bir sonraki ateş etme zamanı
+    private float _nextFire;
 
-    // Reference to the custom AnimatorController script
+    // Animator ve hasar verme bileşenleri için referanslar
     private AnimatorController _animatorController;
+    private DealDamage _dealDamage;
 
     private void Awake()
     {
-        // Find and assign the AnimatorController component from the player's child objects
+        // AnimatorController ve DealDamage bileşenlerini bulur
         _animatorController = GetComponentInChildren<AnimatorController>();
+        _dealDamage = GetComponentInChildren<DealDamage>();
     }
 
     private void Update()
     {
-        // Retrieve horizontal input (e.g., A/D keys or Left/Right arrow keys)
+        // Unity'nin giriş sisteminden yatay hareket bilgisini alır (A/D veya Sol/Sağ ok tuşları)
         _horizontal = Input.GetAxisRaw("Horizontal");
 
-        // Handle jumping when the Jump button is pressed and the player is on the ground
+        // Zıplama tuşuna basıldığında ve oyuncu yerdeyse, yukarı doğru bir hız uygular
         if (Input.GetButtonDown("Jump") && IsGrounded())
         {
             _rigidbody.linearVelocity = new(_rigidbody.linearVelocity.x, _jumpPower);
         }
 
-        // If the Jump button is released mid-air, reduce the jump height for a short-hop effect
+        // Zıplama tuşu bırakıldığında ve oyuncu hala yerdeyse, yukarı hızını azaltarak kısa bir zıplama efekti oluşturur
         if (Input.GetButtonUp("Jump") && _rigidbody.linearVelocity.y > 0f)
         {
             _rigidbody.linearVelocity = new(_rigidbody.linearVelocity.x, _rigidbody.linearVelocity.y * 0.5f);
         }
 
-        // Handle attack when the F key is pressed, the player is on the ground, and enough time has passed since the last attack
+        // Ateş etme tuşuna (F) basıldığında, oyuncu yerdeyse ve ateş etme için bekleme süresi geçmişse
         if (Input.GetKeyDown(KeyCode.F) && IsGrounded() && Time.time > _nextFire)
         {
-            _nextFire = Time.time + _fireRate; // Update the next allowed attack time
-            _animatorController.PlayAnimation("Attack"); // Trigger the attack animation
+            // Bir sonraki ateş etme zamanını günceller
+            _nextFire = Time.time + _fireRate;
+
+            // Saldırı animasyonunu oynatır
+            _animatorController.PlayAnimation("Attack");
+
+            // Yakındaki düşmanlara hasar verir
+            _dealDamage.DealDamageInRange();
         }
 
-        // Update animations based on the player's state
+        // Animasyonları günceller
         HandleAnimations();
 
-        // Flip the player sprite based on movement direction
+        // Oyuncunun yönünü çevirir
         Flip();
     }
 
     private void FixedUpdate()
     {
-        // Set the player's velocity based on horizontal input
-        // This applies smooth movement through Unity's physics system
+        // Hareketi Unity'nin fizik sistemi aracılığıyla işler. Hız, nesnenin hızına göre ayarlanır
         _rigidbody.linearVelocity = new(_horizontal * _speed, _rigidbody.linearVelocity.y);
     }
 
     private bool IsGrounded()
     {
-        // Check if the player is touching the ground by detecting overlap with the specified ground layer
+        // Oyuncunun yere temas edip etmediğini kontrol eder
+        // _groundCheck pozisyonunda, belirli bir yarıçapta ve _groundLayer katmanında bir çarpışma olup olmadığını kontrol eder
         return Physics2D.OverlapCircle(_groundCheck.position, 0.2f, _groundLayer);
     }
 
     private void Flip()
     {
-        // Flip the player's sprite horizontally when changing direction
+        // Oyuncunun sağa veya sola dönmesini sağlar
         if (_isFacingRight && _horizontal < 0f || !_isFacingRight && _horizontal > 0f)
         {
-            _isFacingRight = !_isFacingRight; // Toggle the direction
+            _isFacingRight = !_isFacingRight;
 
-            // Reverse the player's horizontal scale to flip the sprite
+            // Oyuncunun yatay ölçeğini -1 ile çarparak yönünü ters çevirir
             Vector3 localScale = transform.localScale;
             localScale.x *= -1f;
             transform.localScale = localScale;
@@ -88,9 +102,13 @@ public class PlayerController : MonoBehaviour
 
     private void HandleAnimations()
     {
-        // Update the Animator variables to match the player's state
-        _animatorController.SetVariable("Speed", _horizontal); // Speed for running animation
-        _animatorController.SetVariable("Jump", _rigidbody.linearVelocity.y); // Vertical velocity for jump animations
-        _animatorController.SetVariable("IsGrounded", IsGrounded()); // Grounded status for grounded animations
+        // Yürüme animasyonunu kontrol etmek için "Speed" değişkenini günceller
+        _animatorController.SetVariable("Speed", _horizontal);
+
+        // Zıplama animasyonunu kontrol etmek için "Jump" değişkenini günceller
+        _animatorController.SetVariable("Jump", _rigidbody.linearVelocity.y);
+
+        // Yerde olma durumunu kontrol etmek için "IsGrounded" değişkenini günceller
+        _animatorController.SetVariable("IsGrounded", IsGrounded());
     }
 }

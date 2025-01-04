@@ -1,46 +1,43 @@
 using UnityEngine;
 
-// This script requires an Animator component on the same GameObject.
-// It provides functions to control animations and set variables in the Animator.
+// Bu bileşenin bir Animator bileşeni gerektirdiğini belirtir.
 [RequireComponent(typeof(Animator))]
 public class AnimatorController : MonoBehaviour
 {
-    // Reference to the Animator component
+    // Animator bileşeni için bir referans
     private Animator _animator;
 
     private void Awake()
     {
-        // Awake is called when the script instance is being loaded.
-        // Here, we fetch the Animator component attached to the same GameObject.
+        // Aynı nesnedeki Animator bileşenini alıyoruz.
         _animator = GetComponent<Animator>();
     }
 
-    // Plays a specific animation by name.
+    // Belirtilen bir animasyonu oynatır.
     public void PlayAnimation(string animationName)
     {
-        // Triggers the animation using the given animation name.
-        // "Base Layer" is the default layer in Unity's Animator system.
+        // Animator bileşenindeki belirtilen animasyon klibini çalıştırır.
         _animator.Play($"Base Layer.{animationName}");
     }
 
-    // Sets a float parameter in the Animator.
+    // Float türündeki bir Animator değişkenini ayarlar.
     public void SetVariable(string variableName, float variableValue)
     {
-        // Updates the float parameter with the provided name and value.
+        // Belirtilen değişken adını ve değerini Animator'a gönderir.
         _animator.SetFloat(variableName, variableValue);
     }
 
-    // Sets an integer parameter in the Animator.
+    // Integer türündeki bir Animator değişkenini ayarlar.
     public void SetVariable(string variableName, int variableValue)
     {
-        // Updates the integer parameter with the provided name and value.
+        // Belirtilen değişken adını ve değerini Animator'a gönderir.
         _animator.SetInteger(variableName, variableValue);
     }
 
-    // Sets a boolean parameter in the Animator.
+    // Boolean türündeki bir Animator değişkenini ayarlar.
     public void SetVariable(string variableName, bool variableValue)
     {
-        // Updates the boolean parameter with the provided name and value.
+        // Belirtilen değişken adını ve değerini Animator'a gönderir.
         _animator.SetBool(variableName, variableValue);
     }
 }
