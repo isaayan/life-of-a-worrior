@@ -3,45 +3,40 @@ using UnityEngine.Events;
 
 public class PatrolRoute : MonoBehaviour
 {
-    // Devriye rotasının sol sınır noktası
+    // Sol ve sağ sınır noktalarını tutan değişkenler
     private float _leftPoint = 0;
-    // Devriye rotasının sağ sınır noktası
     private float _rightPoint = 0;
 
-    // Sol sınır noktasını dışarıya yalnızca okunabilir olarak sağlar
+    // Sol ve sağ sınır noktalarına erişim sağlayan özellikler
     public float LeftPoint => _leftPoint;
-    // Sağ sınır noktasını dışarıya yalnızca okunabilir olarak sağlar
     public float RightPoint => _rightPoint;
 
-    // Oyuncu rotaya girdiğinde tetiklenen olay (Oyuncu nesnesiyle birlikte)
+    // Oyuncu giriş ve çıkışlarını dinleyen olaylar
     public UnityEvent<GameObject> OnPlayerEnter;
-    // Oyuncu rotadan çıktığında tetiklenen olay
     public UnityEvent OnPlayerExit;
 
+    // Nesne oluşturulurken sol ve sağ sınır noktalarını hesaplar
     private void Awake()
     {
-        // Sol ve sağ sınır noktalarını devriye rotasının genişliğine göre hesaplar
-        _leftPoint = transform.position.x - (transform.localScale.x / 2);
-        _rightPoint = transform.position.x + (transform.localScale.x / 2);
+        _leftPoint = transform.position.x - (transform.localScale.x / 2); // Sol sınır noktası
+        _rightPoint = transform.position.x + (transform.localScale.x / 2); // Sağ sınır noktası
     }
 
+    // Oyuncu collider'ı bu alanın içine girdiğinde tetiklenir
     private void OnTriggerEnter2D(Collider2D collision)
     {
-        // Eğer rotaya giren nesne "Player" etiketi taşıyorsa
-        if (collision.tag == "Player")
+        if (collision.tag == "Player") // Eğer çarpan nesne "Player" etiketine sahipse
         {
-            // Oyuncu rotaya giriş olayını tetikle
-            OnPlayerEnter?.Invoke(collision.gameObject);
+            OnPlayerEnter?.Invoke(collision.gameObject); // Oyuncu girdi olayını tetikle
         }
     }
 
+    // Oyuncu collider'ı bu alanın dışına çıktığında tetiklenir
     private void OnTriggerExit2D(Collider2D collision)
     {
-        // Eğer rotadan çıkan nesne "Player" etiketi taşıyorsa
-        if (collision.tag == "Player")
+        if (collision.tag == "Player") // Eğer çarpan nesne "Player" etiketine sahipse
         {
-            // Oyuncu rotadan çıkış olayını tetikle
-            OnPlayerExit?.Invoke();
+            OnPlayerExit?.Invoke(); // Oyuncu çıkış olayını tetikle
         }
     }
 }

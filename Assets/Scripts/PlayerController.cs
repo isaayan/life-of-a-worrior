@@ -1,114 +1,118 @@
+using Unity.Cinemachine;
 using UnityEngine;
 
-public class PlayerController : MonoBehaviour
+public class PlayerController : CharacterController
 {
-    // Yatay hareket için giriş değeri
-    private float _horizontal;
-    // Oyuncunun hareket hızı
-    private float _speed = 8f;
     // Zıplama gücü
     private float _jumpPower = 16f;
-    // Oyuncunun hangi yöne baktığını kontrol eder (sağa mı sola mı)
-    private bool _isFacingRight = true;
 
-    // Oyuncunun fiziksel hareketini kontrol etmek için Rigidbody2D referansı
-    [SerializeField] private Rigidbody2D _rigidbody;
-    // Oyuncunun yere değip değmediğini kontrol etmek için kullanılan nokta
+    // Yere temas kontrolü için yer belirleyici
     [SerializeField] private Transform _groundCheck;
-    // Yere temas kontrolü için kullanılan katman
+
+    // Yerin katman maskesi
     [SerializeField] private LayerMask _groundLayer;
 
-    [Space(10)]
-    // Ateş etme sıklığını belirler
-    [SerializeField] private float _fireRate;
+    // Oyuncu hasar aldığında donmuş olup olmadığını takip eden değişken
+    private bool _isTakingDamage = false; // Stun olup olmadığını takip eder
 
-    // Bir sonraki ateş etme zamanı
-    private float _nextFire;
+    // Hasar verme durumu
+    private bool _dealedDamage = false;
 
-    // Animator ve hasar verme bileşenleri için referanslar
-    private AnimatorController _animatorController;
-    private DealDamage _dealDamage;
+    // Cinemachine impuls kaynağı
+    private CinemachineImpulseSource _impulseSource;
 
-    private void Awake()
+    // Nesne oluşturulurken gerekli bileşenleri alır
+    protected override void Awake()
     {
-        // AnimatorController ve DealDamage bileşenlerini bulur
-        _animatorController = GetComponentInChildren<AnimatorController>();
-        _dealDamage = GetComponentInChildren<DealDamage>();
+        base.Awake();
+
+        _impulseSource = GetComponent<CinemachineImpulseSource>();
+
+        // Eğer HealthController varsa, hasar aldığında olay dinleyicisi ekler
+        if (_healthController != null)
+        {
+            _healthController.OnTookDamage.AddListener(OnTookDamage);
+        }
     }
 
-    private void Update()
+    // Her karede inputları kontrol eder ve hareketleri işler
+    protected override void Update()
     {
-        // Unity'nin giriş sisteminden yatay hareket bilgisini alır (A/D veya Sol/Sağ ok tuşları)
-        _horizontal = Input.GetAxisRaw("Horizontal");
+        // Eğer oyuncu hasar alıyorsa, diğer hareketleri durdurur
+        if (_isTakingDamage) return; // Stun olduğunda tüm aksiyonları durdur
 
-        // Zıplama tuşuna basıldığında ve oyuncu yerdeyse, yukarı doğru bir hız uygular
+        _horizontal = Input.GetAxisRaw("Horizontal"); // Yatay hareket girişi
+
+        // Zıplama butonuna basıldığında ve yerle temas halinde zıplama işlemi yapılır
         if (Input.GetButtonDown("Jump") && IsGrounded())
         {
-            _rigidbody.linearVelocity = new(_rigidbody.linearVelocity.x, _jumpPower);
+            _rigidbody.linearVelocity = new Vector2(_rigidbody.linearVelocity.x, _jumpPower);
         }
 
-        // Zıplama tuşu bırakıldığında ve oyuncu hala yerdeyse, yukarı hızını azaltarak kısa bir zıplama efekti oluşturur
+        // Zıplama butonu bırakıldığında yukarı hareketin hızını azaltır
         if (Input.GetButtonUp("Jump") && _rigidbody.linearVelocity.y > 0f)
         {
-            _rigidbody.linearVelocity = new(_rigidbody.linearVelocity.x, _rigidbody.linearVelocity.y * 0.5f);
+            _rigidbody.linearVelocity = new Vector2(_rigidbody.linearVelocity.x, _rigidbody.linearVelocity.y * 0.5f);
         }
 
-        // Ateş etme tuşuna (F) basıldığında, oyuncu yerdeyse ve ateş etme için bekleme süresi geçmişse
+        // F tuşuna basıldığında, yere basılıysa ve atış için zaman uygunsa
         if (Input.GetKeyDown(KeyCode.F) && IsGrounded() && Time.time > _nextFire)
         {
-            // Bir sonraki ateş etme zamanını günceller
-            _nextFire = Time.time + _fireRate;
+            _nextFire = Time.time + _fireRate; // Bir sonraki ateş etme zamanı
 
-            // Saldırı animasyonunu oynatır
-            _animatorController.PlayAnimation("Attack");
+            _animatorController.PlayAnimation("Attack"); // Saldırı animasyonunu oynatır
 
-            // Yakındaki düşmanlara hasar verir
-            _dealDamage.DealDamageInRange();
+            _dealedDamage = false; // Hasar henüz verilmedi
+
+            // Hasar kaydını animasyonla uyumlu olacak şekilde geciktirir
+            StartCoroutine(DelayDamage());
         }
 
-        // Animasyonları günceller
-        HandleAnimations();
-
-        // Oyuncunun yönünü çevirir
-        Flip();
+        base.Update(); // Parent sınıfın Update metodunu çağırır
     }
 
-    private void FixedUpdate()
-    {
-        // Hareketi Unity'nin fizik sistemi aracılığıyla işler. Hız, nesnenin hızına göre ayarlanır
-        _rigidbody.linearVelocity = new(_horizontal * _speed, _rigidbody.linearVelocity.y);
-    }
-
+    // Yerin üzerinde olup olmadığını kontrol eder
     private bool IsGrounded()
     {
-        // Oyuncunun yere temas edip etmediğini kontrol eder
-        // _groundCheck pozisyonunda, belirli bir yarıçapta ve _groundLayer katmanında bir çarpışma olup olmadığını kontrol eder
         return Physics2D.OverlapCircle(_groundCheck.position, 0.2f, _groundLayer);
     }
 
-    private void Flip()
+    // Animasyonlarla ilgili değişkenleri ayarlayan metod
+    protected override void HandleAnimations()
     {
-        // Oyuncunun sağa veya sola dönmesini sağlar
-        if (_isFacingRight && _horizontal < 0f || !_isFacingRight && _horizontal > 0f)
-        {
-            _isFacingRight = !_isFacingRight;
-
-            // Oyuncunun yatay ölçeğini -1 ile çarparak yönünü ters çevirir
-            Vector3 localScale = transform.localScale;
-            localScale.x *= -1f;
-            transform.localScale = localScale;
-        }
+        _animatorController.SetVariable("Speed", _horizontal); // Yatay hız
+        _animatorController.SetVariable("Jump", _rigidbody.linearVelocity.y); // Zıplama hızı
+        _animatorController.SetVariable("IsGrounded", IsGrounded()); // Yerde olup olmadığını kontrol eder
     }
 
-    private void HandleAnimations()
+    // Hasar verme işlemini geciktiren Coroutine
+    private System.Collections.IEnumerator DelayDamage()
     {
-        // Yürüme animasyonunu kontrol etmek için "Speed" değişkenini günceller
-        _animatorController.SetVariable("Speed", _horizontal);
+        // Oyuncuyu stunlar
+        _isTakingDamage = true;
+        _horizontal = 0; // Yatay hareketi durdurur
 
-        // Zıplama animasyonunu kontrol etmek için "Jump" değişkenini günceller
-        _animatorController.SetVariable("Jump", _rigidbody.linearVelocity.y);
+        // Saldırı animasyonunun zamanlamasına göre gecikme (animasyona uyacak şekilde ayarlanabilir)
+        yield return new WaitForSeconds(0.15f); // Örnek: 0.3 saniye gecikme
 
-        // Yerde olma durumunu kontrol etmek için "IsGrounded" değişkenini günceller
-        _animatorController.SetVariable("IsGrounded", IsGrounded());
+        if (!_dealedDamage)
+        {
+            _dealDamage.DealDamageInRange(); // Hasar verir
+            _dealedDamage = true; // Hasar verildiğini işaretler
+        }
+
+        // Saldırı animasyonunun uzunluğuna göre bekler
+        float attackAnimationTime = _animatorController.GetAnimationLength("Attack"); // Bu metodun var olduğundan emin ol
+        yield return new WaitForSeconds(attackAnimationTime);
+
+        _isTakingDamage = false; // Stun durumunu sonlandırır
+    }
+
+    // Hasar alındığında çağrılır
+    public void OnTookDamage(float health, float maxHealth)
+    {
+        FloatingHealthBar.Instance.UpdateHealthBar(health, maxHealth); // Sağlık çubuğunu günceller
+
+        CameraShakeManager.Instance.CameraShake(_impulseSource); // Kamera sarsıntısı uygular
     }
 }

@@ -1,155 +1,127 @@
 using UnityEngine;
 
-public class EnemyController : MonoBehaviour
+public class EnemyController : CharacterController
 {
-    // Yatay hareket yönü (-1: sola, 1: sağa)
-    private float _horizontal = -1;
-    // Hareket hızı
-    [SerializeField] private float _speed = 5f;
-    // Yüzü sağa dönük mü kontrolü
-    private bool _isFacingRight = true;
+    [SerializeField] private float _fireRange = 1.5f; // Düşmanın ateş etme mesafesi
+    [SerializeField] private PatrolRoute _patrolRoute; // Düşmanın gezinti yolu
 
-    // Rigidbody bileşeni (fizik tabanlı hareket için)
-    [SerializeField] private Rigidbody2D _rigidbody;
+    private bool _playerInRoute = false; // Oyuncu gezinti yoluna girdi mi?
+    private GameObject _player; // Oyuncu nesnesi
+    private bool _playerInRange = false; // Oyuncu ateş menzilinde mi?
+    private bool _isTakingDamage = false; // Düşman hasar alırken hareketsiz mi?
 
-    [Space(10)]
-    // Ateş etme hızı
-    [SerializeField] private float _fireRate;
-    // Ateş etme menzili
-    [SerializeField] private float _fireRange = 1.5f;
-
-    // Bir sonraki ateş zamanı
-    private float _nextFire;
-
-    // AnimatorController bileşeni referansı
-    private AnimatorController _animatorController;
-    // Hasar verme bileşeni referansı
-    private DealDamage _dealDamage;
-
-    // Devriye rotası
-    [SerializeField] private PatrolRoute _patrolRourte;
-
-    // Oyuncu rotada mı kontrolü
-    private bool _playerInRoute = false;
-    // Oyuncu nesnesi referansı
-    private GameObject _player;
-
-    // Oyuncu menzilde mi kontrolü
-    private bool _playerInRange = false;
-
-    private void Awake()
+    // Awake fonksiyonu, düşman nesnesi başlatıldığında çalışır
+    protected override void Awake()
     {
-        // AnimatorController ve DealDamage bileşenlerini al
-        _animatorController = GetComponentInChildren<AnimatorController>();
-        _dealDamage = GetComponentInChildren<DealDamage>();
+        base.Awake(); // Taban sınıfın Awake fonksiyonunu çağırır
+
+        _patrolRoute.OnPlayerEnter.AddListener(OnPlayerEnter); // Oyuncu gezinti yoluna girdiğinde tetiklenecek olay
+        _patrolRoute.OnPlayerExit.AddListener(OnPlayerExit); // Oyuncu gezinti yolundan çıktığında tetiklenecek olay
     }
 
-    private void Start()
+    // Update fonksiyonu, her frame'de sürekli olarak çağrılır
+    protected override void Update()
     {
-        // Oyuncu rotaya girdiğinde ve çıktığında tetiklenecek olaylara dinleyici ekle
-        _patrolRourte.OnPlayerEnter.AddListener(OnPlayerEnter);
-        _patrolRourte.OnPlayerExit.AddListener(OnPLayerExit);
-    }
+        if (_isTakingDamage) return; // Eğer düşman hasar alıyorsa hareket etmeyi durdur
 
-    void Update()
-    {
-        // Eğer oyuncu rotadaysa
-        if (_playerInRoute)
+        if (_playerInRoute) // Eğer oyuncu gezinti yoluna girdiyse
         {
-            // Oyuncunun konumuna göre yatay hareket yönünü belirle
-            var position = transform.position.x - _player.transform.position.x;
+            float position = transform.position.x - _player.transform.position.x; // Düşman ve oyuncu arasındaki mesafe
 
-            if (position < -_fireRange)
+            if (position < -_fireRange) // Eğer oyuncu ateş menzilinin solundaysa
             {
-                _horizontal = 1;
+                _horizontal = 1; // Düşmanı sağa hareket ettir
                 _playerInRange = false;
             }
-            else if (position <= 0 && position > -_fireRange && !_playerInRange)
+            else if (position > _fireRange) // Eğer oyuncu ateş menzilinin sağındaysa
             {
-                _horizontal = 0;
-                _playerInRange = true;
-                _nextFire = Time.time + _fireRate;
-            }
-            else if (position > _fireRange)
-            {
-                _horizontal = -1;
+                _horizontal = -1; // Düşmanı sola hareket ettir
                 _playerInRange = false;
             }
-            else if (position >= 0 && position < _fireRange && !_playerInRange)
+            else if (!_playerInRange) // Eğer oyuncu ateş menzilindeyse
             {
-                _horizontal = 0;
+                _horizontal = 0; // Düşmanı durdur
                 _playerInRange = true;
-                _nextFire = Time.time + _fireRate;
+                _nextFire = Time.time + _fireRate; // Yeni ateş zamanı ayarlanır
             }
 
-            // Oyuncu menzilde ve ateş etme zamanı geldiyse
-            if (Time.time > _nextFire && (position > -_fireRange && position < _fireRange))
+            if (Time.time > _nextFire && position > -_fireRange && position < _fireRange) // Eğer ateş etme zamanı geldiyse
             {
-                _nextFire = Time.time + _fireRate;
+                _nextFire = Time.time + _fireRate; // Yeni ateş zamanı ayarlanır
 
-                // Saldırı animasyonunu başlat ve hasar uygula
-                _animatorController.PlayAnimation("Attack");
-                _dealDamage.DealDamageInRange();
+                _animatorController.PlayAnimation("Attack"); // Saldırı animasyonu oynatılır
+
+                // Hasar kaydının animasyon ile eşleşmesi için gecikme başlatılır
+                StartCoroutine(DelayDamage());
             }
         }
-        else
+        else // Eğer oyuncu gezinti yolunda değilse
         {
-            // Devriye rotasında hareket yönünü belirle
-            if (transform.position.x - _patrolRourte.LeftPoint <= 0.01f)
+            // Düşman, gezinti yolunun sol ya da sağ sınırına yaklaşırsa yön değiştirilir
+            if (transform.position.x - _patrolRoute.LeftPoint <= 0.01f)
             {
-                _horizontal = 1;
+                _horizontal = 1; // Düşmanı sağa hareket ettir
             }
-            else if (_patrolRourte.RightPoint - transform.position.x <= 0.01f)
+            else if (_patrolRoute.RightPoint - transform.position.x <= 0.01f)
             {
-                _horizontal = -1;
+                _horizontal = -1; // Düşmanı sola hareket ettir
             }
         }
 
-        // Animasyonları güncelle
-        HandleAnimations();
-
-        // Karakterin yüzünü çevir
-        Flip();
+        base.Update(); // Taban sınıfın Update fonksiyonunu çağırır
     }
 
-    private void FixedUpdate()
+    // Animasyonları kontrol etmek için kullanılan fonksiyon
+    protected override void HandleAnimations()
     {
-        // Fizik tabanlı hareketi uygula (Unity'nin fizik sistemi kullanılarak)
-        _rigidbody.linearVelocity = new(_horizontal * _speed, _rigidbody.linearVelocity.y);
+        _animatorController.SetVariable("Speed", _horizontal); // Düşmanın hareket hızını animasyona yansıtır
     }
 
-    private void Flip()
-    {
-        // Karakterin yüzünü giriş yönüne göre çevir
-        if (_isFacingRight && _horizontal < 0f || !_isFacingRight && _horizontal > 0f)
-        {
-            _isFacingRight = !_isFacingRight;
-
-            // Karakterin ölçeğini x ekseninde ters çevirerek yönünü değiştir
-            Vector3 localScale = transform.localScale;
-            localScale.x *= -1f;
-            transform.localScale = localScale;
-        }
-    }
-
-    private void HandleAnimations()
-    {
-        // Animasyona hız değişkenini ayarla
-        _animatorController.SetVariable("Speed", _horizontal);
-    }
-
+    // Oyuncu gezinti yoluna girdiğinde çağrılır
     private void OnPlayerEnter(GameObject player)
     {
-        // Oyuncu rotaya girdiğinde çağrılır
-        _playerInRoute = true;
-        _player = player;
+        _playerInRoute = true; // Oyuncu gezinti yoluna girdi
+        _player = player; // Oyuncu nesnesi kaydedilir
     }
 
-    private void OnPLayerExit()
+    // Oyuncu gezinti yolundan çıktığında çağrılır
+    private void OnPlayerExit()
     {
-        // Oyuncu rotadan çıktığında çağrılır
-        _playerInRoute = false;
-        _player = null;
+        _playerInRoute = false; // Oyuncu gezinti yolundan çıktı
+        _player = null; // Oyuncu nesnesi sıfırlanır
+    }
+
+    // Saldırı hasarını uygulamadan önce gecikme ekleyen fonksiyon
+    private System.Collections.IEnumerator DelayDamage()
+    {
+        // Düşmanı sersemlet
+        _isTakingDamage = true;
+        _horizontal = 0; // Düşmanı durdur
+
+        // Saldırı animasyonu süresi kadar gecikme eklenir
+        yield return new WaitForSeconds(0.3f); // Örnek: 0.3 saniye gecikme
+        _dealDamage.DealDamageInRange(); // Menzildeki hedeflere hasar verilir
+
+        // Saldırı animasyonu bitene kadar beklenir
+        float attackAnimationTime = _animatorController.GetAnimationLength("Attack"); // Animasyon uzunluğu alınır
+        yield return new WaitForSeconds(attackAnimationTime); // Animasyon süresi kadar beklenir
+
+        _isTakingDamage = false; // Hasar almayı bitir
+    }
+
+    // Düşman öldüğünde çağrılır
+    protected override void Die()
+    {
+        base.Die(); // Taban sınıfın Die fonksiyonunu çağırır
+
+        // Oyun bitme durumu kontrol edilir ve gereken işlemler yapılır
+        if (WinGame.Instance)
+        {
+            WinGame.Instance.EnemyDied(); // Düşman öldü, oyun ilerletilir
+        }
+        if (WinEndGame.Instance)
+        {
+            WinEndGame.Instance.EnemyDied(); // Düşman öldü, oyun bitirilir
+        }
     }
 }
-
